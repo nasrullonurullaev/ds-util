@@ -1,5 +1,3 @@
----
-
 # dsutil
 
 `dsutil` is a diagnostic utility for **ONLYOFFICE DocumentServer**.
