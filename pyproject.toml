@@ -1,0 +1,15 @@
+[project]
+name = "dsutil"
+version = "0.1.0"
+description = "ONLYOFFICE DocumentServer diagnostics utility"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+dsutil = "dsutil.cli:main"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
