@@ -41,7 +41,7 @@ jobs:
       - name: Build binary with PyInstaller
         shell: bash
         run: |
-          pyinstaller -F -n dsutil src/dsutil/__main__.py
+          pyinstaller -F -n dsutil --paths src --collect-submodules dsutil entrypoint.py
 
       - name: Prepare artifact name
         id: prep
