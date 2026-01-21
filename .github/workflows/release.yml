@@ -1,0 +1,98 @@
+name: Release (Linux & Windows)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g. v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # IMPORTANT: needed for tags
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller
+
+      - name: Build binary with PyInstaller
+        shell: bash
+        run: |
+          pyinstaller -F -n dsutil -m dsutil
+
+      - name: Prepare artifact name
+        id: prep
+        shell: bash
+        run: |
+          VERSION="${{ inputs.version }}"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            echo "asset=dsutil-${VERSION}-windows-amd64.exe" >> "$GITHUB_OUTPUT"
+            echo "path=dist/dsutil.exe" >> "$GITHUB_OUTPUT"
+          else
+            echo "asset=dsutil-${VERSION}-linux-amd64" >> "$GITHUB_OUTPUT"
+            echo "path=dist/dsutil" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.prep.outputs.asset }}
+          path: ${{ steps.prep.outputs.path }}
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout (for tagging)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create and push git tag
+        run: |
+          VERSION="${{ inputs.version }}"
+          git tag "${VERSION}"
+          git push origin "${VERSION}"
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: List assets
+        run: ls -la release-assets
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          name: ${{ inputs.version }}
+          files: |
+            release-assets/**/*
+          generate_release_notes: true
