@@ -33,30 +33,49 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Locate Python in manylinux
+      - name: Locate CPython 3.12 with shared libpython (required by PyInstaller)
         shell: bash
         run: |
-          ls -la /opt/python
-          PYBIN="$(ls -d /opt/python/cp312-*/bin 2>/dev/null | head -n 1)"
-          if [[ -z "$PYBIN" ]]; then
-            echo "Python 3.12 not found in /opt/python. Available:"
-            ls -1 /opt/python
+          set -euo pipefail
+          echo "Listing /opt/python:"
+          ls -1 /opt/python || true
+
+          PICK=""
+          for d in /opt/python/cp312-*; do
+            if [[ -x "$d/bin/python" ]] && ls "$d/lib"/libpython3.12.so* >/dev/null 2>&1; then
+              PICK="$d"
+              break
+            fi
+          done
+
+          if [[ -z "$PICK" ]]; then
+            echo "ERROR: No CPython 3.12 with shared libpython found in this image."
+            echo "Details for cp312-*:"
+            for d in /opt/python/cp312-*; do
+              echo "== $d =="
+              ls -la "$d/lib" 2>/dev/null | grep -E "libpython3\.12\.so|libpython" || true
+            done
             exit 1
           fi
-          echo "$PYBIN" >> $GITHUB_PATH
-          "$PYBIN/python" --version
-          "$PYBIN/python" -m pip --version
+
+          echo "Selected: $PICK"
+          echo "PYTHON=$PICK/bin/python" >> "$GITHUB_ENV"
+          "$PICK/bin/python" --version
+          "$PICK/bin/python" -m pip --version
+          ls -la "$PICK/lib" | grep -E "libpython3\.12\.so" || true
 
       - name: Install build dependencies
         shell: bash
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install pyinstaller
+          set -euo pipefail
+          "$PYTHON" -m pip install --upgrade pip
+          "$PYTHON" -m pip install pyinstaller
 
       - name: Build binary with PyInstaller
         shell: bash
         run: |
-          pyinstaller -F -n dsutil --paths src --collect-submodules dsutil entrypoint.py
+          set -euo pipefail
+          "$PYTHON" -m PyInstaller -F -n dsutil --paths src --collect-submodules dsutil entrypoint.py
 
       - name: Prepare artifact
         shell: bash
@@ -93,7 +112,7 @@ jobs:
       - name: Build binary with PyInstaller
         shell: bash
         run: |
-          pyinstaller -F -n dsutil --paths src --collect-submodules dsutil entrypoint.py
+          python -m PyInstaller -F -n dsutil --paths src --collect-submodules dsutil entrypoint.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -101,19 +120,19 @@ jobs:
           name: dsutil-${{ inputs.version }}-windows-amd64.exe
           path: dist/dsutil.exe
           if-no-files-found: error
- 
+
   release:
     name: Create GitHub Release
     needs: [build-linux, build-windows]
     runs-on: ubuntu-latest
     if: ${{ inputs.publish_release }}
-  
+
     steps:
       - name: Checkout (for tagging)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-  
+
       - name: Create and push git tag (if missing)
         shell: bash
         run: |
@@ -125,22 +144,26 @@ jobs:
             git tag "${VERSION}"
             git push origin "${VERSION}"
           fi
-  
+
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           path: release-assets
-  
+
       - name: Rename assets nicely
         shell: bash
         run: |
+          set -euo pipefail
           VERSION="${{ inputs.version }}"
+
           mv "release-assets/dsutil-${VERSION}-linux-amd64/dsutil" \
              "release-assets/dsutil-${VERSION}-linux-amd64"
+
           mv "release-assets/dsutil-${VERSION}-windows-amd64.exe/dsutil.exe" \
              "release-assets/dsutil-${VERSION}-windows-amd64.exe"
+
           ls -la release-assets
-  
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
