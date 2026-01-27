@@ -4,34 +4,79 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version (e.g. v0.1.0)"
+        description: "Release version tag (e.g. v0.4.0)"
         required: true
         type: string
+      publish_release:
+        description: "Publish GitHub Release"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+  build-linux:
+    name: Build (linux-x86_64, manylinux_2_28)
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/pypa/manylinux_2_28_x86_64
 
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        python: ["3.12"]
+    steps:
+      - name: Install git (container)
+        run: |
+          yum -y install git
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select Python 3.12 from manylinux
+        shell: bash
+        run: |
+          echo "/opt/python/cp312-cp312/bin" >> $GITHUB_PATH
+          python --version
+          python -m pip --version
+
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller
+
+      - name: Build binary with PyInstaller
+        shell: bash
+        run: |
+          pyinstaller -F -n dsutil --paths src --collect-submodules dsutil entrypoint.py
+
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          chmod +x dist/dsutil
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsutil-${{ inputs.version }}-linux-amd64
+          path: dist/dsutil
+          if-no-files-found: error
+
+  build-windows:
+    name: Build (windows-amd64)
+    runs-on: windows-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # IMPORTANT: needed for tags
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python }}
+          python-version: "3.12"
 
       - name: Install build dependencies
         run: |
@@ -43,56 +88,58 @@ jobs:
         run: |
           pyinstaller -F -n dsutil --paths src --collect-submodules dsutil entrypoint.py
 
-      - name: Prepare artifact name
-        id: prep
-        shell: bash
-        run: |
-          VERSION="${{ inputs.version }}"
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            echo "asset=dsutil-${VERSION}-windows-amd64.exe" >> "$GITHUB_OUTPUT"
-            echo "path=dist/dsutil.exe" >> "$GITHUB_OUTPUT"
-          else
-            echo "asset=dsutil-${VERSION}-linux-amd64" >> "$GITHUB_OUTPUT"
-            echo "path=dist/dsutil" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.prep.outputs.asset }}
-          path: ${{ steps.prep.outputs.path }}
+          name: dsutil-${{ inputs.version }}-windows-amd64.exe
+          path: dist/dsutil.exe
           if-no-files-found: error
 
-  release:
-    name: Create GitHub Release
-    needs: build
-    runs-on: ubuntu-latest
+release:
+  name: Create GitHub Release
+  needs: [build-linux, build-windows]
+  runs-on: ubuntu-latest
+  if: ${{ inputs.publish_release }}
 
-    steps:
-      - name: Checkout (for tagging)
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+  steps:
+    - name: Checkout (for tagging)
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
-      - name: Create and push git tag
-        run: |
-          VERSION="${{ inputs.version }}"
+    - name: Create and push git tag (if missing)
+      shell: bash
+      run: |
+        VERSION="${{ inputs.version }}"
+        git fetch --tags
+        if git rev-parse -q --verify "refs/tags/${VERSION}" >/dev/null; then
+          echo "Tag ${VERSION} already exists, skipping tag creation."
+        else
           git tag "${VERSION}"
           git push origin "${VERSION}"
+        fi
 
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: release-assets
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: release-assets
 
-      - name: List assets
-        run: ls -la release-assets
+    - name: Rename assets nicely
+      shell: bash
+      run: |
+        VERSION="${{ inputs.version }}"
+        mv "release-assets/dsutil-${VERSION}-linux-amd64/dsutil" \
+           "release-assets/dsutil-${VERSION}-linux-amd64"
+        mv "release-assets/dsutil-${VERSION}-windows-amd64.exe/dsutil.exe" \
+           "release-assets/dsutil-${VERSION}-windows-amd64.exe"
+        ls -la release-assets
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ inputs.version }}
-          name: ${{ inputs.version }}
-          files: |
-            release-assets/**/*
-          generate_release_notes: true
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ inputs.version }}
+        name: ${{ inputs.version }}
+        files: |
+          release-assets/dsutil-${{ inputs.version }}-linux-amd64
+          release-assets/dsutil-${{ inputs.version }}-windows-amd64.exe
+        generate_release_notes: true
