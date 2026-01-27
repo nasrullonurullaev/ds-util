@@ -33,12 +33,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Select Python 3.12 from manylinux
+      - name: Locate Python in manylinux
         shell: bash
         run: |
-          echo "/opt/python/cp312-cp312/bin" >> $GITHUB_PATH
-          python --version
-          python -m pip --version
+          ls -la /opt/python
+          PYBIN="$(ls -d /opt/python/cp312-*/bin 2>/dev/null | head -n 1)"
+          if [[ -z "$PYBIN" ]]; then
+            echo "Python 3.12 not found in /opt/python. Available:"
+            ls -1 /opt/python
+            exit 1
+          fi
+          echo "$PYBIN" >> $GITHUB_PATH
+          "$PYBIN/python" --version
+          "$PYBIN/python" -m pip --version
 
       - name: Install build dependencies
         shell: bash
