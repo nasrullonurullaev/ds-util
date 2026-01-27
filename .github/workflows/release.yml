@@ -33,36 +33,49 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Locate CPython 3.12 with shared libpython (required by PyInstaller)
+      - name: Locate CPython with shared libpython (PyInstaller requirement)
         shell: bash
         run: |
           set -euo pipefail
           echo "Listing /opt/python:"
           ls -1 /opt/python || true
-
+      
+          pick_shared() {
+            local prefix="$1"   # e.g. cp312- or cp311-
+            for d in /opt/python/${prefix}*; do
+              if [[ -x "$d/bin/python" ]] && ls "$d/lib"/libpython*.so* >/dev/null 2>&1; then
+                echo "$d"
+                return 0
+              fi
+            done
+            return 1
+          }
+      
           PICK=""
-          for d in /opt/python/cp312-*; do
-            if [[ -x "$d/bin/python" ]] && ls "$d/lib"/libpython3.12.so* >/dev/null 2>&1; then
-              PICK="$d"
-              break
-            fi
-          done
-
-          if [[ -z "$PICK" ]]; then
-            echo "ERROR: No CPython 3.12 with shared libpython found in this image."
-            echo "Details for cp312-*:"
-            for d in /opt/python/cp312-*; do
+          PYVER=""
+      
+          # Try CPython 3.12 first
+          if PICK="$(pick_shared cp312-)"; then
+            PYVER="3.12"
+          elif PICK="$(pick_shared cp311-)"; then
+            PYVER="3.11"
+          else
+            echo "ERROR: No suitable CPython (3.12/3.11) with shared libpython found."
+            echo "Details:"
+            for d in /opt/python/cp31*; do
               echo "== $d =="
-              ls -la "$d/lib" 2>/dev/null | grep -E "libpython3\.12\.so|libpython" || true
+              ls -la "$d/lib" 2>/dev/null | grep -E "libpython|python3" || true
             done
             exit 1
           fi
-
-          echo "Selected: $PICK"
+      
+          echo "Selected CPython: $PICK (Python $PYVER)"
           echo "PYTHON=$PICK/bin/python" >> "$GITHUB_ENV"
+          echo "PYTHON_VERSION_SELECTED=$PYVER" >> "$GITHUB_ENV"
+      
           "$PICK/bin/python" --version
           "$PICK/bin/python" -m pip --version
-          ls -la "$PICK/lib" | grep -E "libpython3\.12\.so" || true
+          ls -la "$PICK/lib" | grep -E "libpython" || true
 
       - name: Install build dependencies
         shell: bash
