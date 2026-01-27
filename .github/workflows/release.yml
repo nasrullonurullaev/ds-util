@@ -94,52 +94,52 @@ jobs:
           name: dsutil-${{ inputs.version }}-windows-amd64.exe
           path: dist/dsutil.exe
           if-no-files-found: error
-
- release:
-  name: Create GitHub Release
-  needs: [build-linux, build-windows]
-  runs-on: ubuntu-latest
-  if: ${{ inputs.publish_release }}
-
-  steps:
-    - name: Checkout (for tagging)
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
-    - name: Create and push git tag (if missing)
-      shell: bash
-      run: |
-        VERSION="${{ inputs.version }}"
-        git fetch --tags
-        if git rev-parse -q --verify "refs/tags/${VERSION}" >/dev/null; then
-          echo "Tag ${VERSION} already exists, skipping tag creation."
-        else
-          git tag "${VERSION}"
-          git push origin "${VERSION}"
-        fi
-
-    - name: Download build artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: release-assets
-
-    - name: Rename assets nicely
-      shell: bash
-      run: |
-        VERSION="${{ inputs.version }}"
-        mv "release-assets/dsutil-${VERSION}-linux-amd64/dsutil" \
-           "release-assets/dsutil-${VERSION}-linux-amd64"
-        mv "release-assets/dsutil-${VERSION}-windows-amd64.exe/dsutil.exe" \
-           "release-assets/dsutil-${VERSION}-windows-amd64.exe"
-        ls -la release-assets
-
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: ${{ inputs.version }}
-        name: ${{ inputs.version }}
-        files: |
-          release-assets/dsutil-${{ inputs.version }}-linux-amd64
-          release-assets/dsutil-${{ inputs.version }}-windows-amd64.exe
-        generate_release_notes: true
+ 
+  release:
+    name: Create GitHub Release
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    if: ${{ inputs.publish_release }}
+  
+    steps:
+      - name: Checkout (for tagging)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+  
+      - name: Create and push git tag (if missing)
+        shell: bash
+        run: |
+          VERSION="${{ inputs.version }}"
+          git fetch --tags
+          if git rev-parse -q --verify "refs/tags/${VERSION}" >/dev/null; then
+            echo "Tag ${VERSION} already exists, skipping tag creation."
+          else
+            git tag "${VERSION}"
+            git push origin "${VERSION}"
+          fi
+  
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+  
+      - name: Rename assets nicely
+        shell: bash
+        run: |
+          VERSION="${{ inputs.version }}"
+          mv "release-assets/dsutil-${VERSION}-linux-amd64/dsutil" \
+             "release-assets/dsutil-${VERSION}-linux-amd64"
+          mv "release-assets/dsutil-${VERSION}-windows-amd64.exe/dsutil.exe" \
+             "release-assets/dsutil-${VERSION}-windows-amd64.exe"
+          ls -la release-assets
+  
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          name: ${{ inputs.version }}
+          files: |
+            release-assets/dsutil-${{ inputs.version }}-linux-amd64
+            release-assets/dsutil-${{ inputs.version }}-windows-amd64.exe
+          generate_release_notes: true
