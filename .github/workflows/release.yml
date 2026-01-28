@@ -1,3 +1,13 @@
+name: Build (Linux manylinux_2_28 & Windows)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Build version label (e.g. v0.1.0)"
+        required: true
+        type: string
+
 jobs:
   build:
     name: Build (${{ matrix.target }})
@@ -28,7 +38,6 @@ jobs:
           VERSION="${{ inputs.version }}"
           ASSET="dsutil-${VERSION}-linux-amd64"
 
-          # Важно: сборка внутри manylinux_2_28 (glibc 2.28)
           docker run --rm \
             -v "${PWD}:/io" \
             -w /io \
@@ -74,6 +83,7 @@ jobs:
         if: matrix.target == 'windows-amd64'
         shell: bash
         run: |
+          set -euxo pipefail
           VERSION="${{ inputs.version }}"
           mkdir -p out
           cp -f dist/dsutil.exe "out/dsutil-${VERSION}-windows-amd64.exe"
