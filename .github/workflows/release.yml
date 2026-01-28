@@ -4,118 +4,34 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version tag (e.g. v0.4.0)"
+        description: "Release version (e.g. v0.1.0)"
         required: true
         type: string
-      publish_release:
-        description: "Publish GitHub Release"
-        required: true
-        default: false
-        type: boolean
 
 permissions:
   contents: write
 
 jobs:
-  build-linux:
-    name: Build (linux-x86_64, manylinux_2_28)
-    runs-on: ubuntu-latest
-    container:
-      image: quay.io/pypa/manylinux_2_28_x86_64
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
 
-    steps:
-      - name: Install git (container)
-        run: |
-          yum -y install git
-
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Locate CPython with shared libpython (PyInstaller requirement)
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "Listing /opt/python:"
-          ls -1 /opt/python || true
-      
-          pick_shared() {
-            local prefix="$1"   # e.g. cp312- or cp311-
-            for d in /opt/python/${prefix}*; do
-              if [[ -x "$d/bin/python" ]] && ls "$d/lib"/libpython*.so* >/dev/null 2>&1; then
-                echo "$d"
-                return 0
-              fi
-            done
-            return 1
-          }
-      
-          PICK=""
-          PYVER=""
-      
-          # Try CPython 3.12 first
-          if PICK="$(pick_shared cp312-)"; then
-            PYVER="3.12"
-          elif PICK="$(pick_shared cp311-)"; then
-            PYVER="3.11"
-          else
-            echo "ERROR: No suitable CPython (3.12/3.11) with shared libpython found."
-            echo "Details:"
-            for d in /opt/python/cp31*; do
-              echo "== $d =="
-              ls -la "$d/lib" 2>/dev/null | grep -E "libpython|python3" || true
-            done
-            exit 1
-          fi
-      
-          echo "Selected CPython: $PICK (Python $PYVER)"
-          echo "PYTHON=$PICK/bin/python" >> "$GITHUB_ENV"
-          echo "PYTHON_VERSION_SELECTED=$PYVER" >> "$GITHUB_ENV"
-      
-          "$PICK/bin/python" --version
-          "$PICK/bin/python" -m pip --version
-          ls -la "$PICK/lib" | grep -E "libpython" || true
-
-      - name: Install build dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          "$PYTHON" -m pip install --upgrade pip
-          "$PYTHON" -m pip install pyinstaller
-
-      - name: Build binary with PyInstaller
-        shell: bash
-        run: |
-          set -euo pipefail
-          "$PYTHON" -m PyInstaller -F -n dsutil --paths src --collect-submodules dsutil entrypoint.py
-
-      - name: Prepare artifact
-        shell: bash
-        run: |
-          chmod +x dist/dsutil
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: dsutil-${{ inputs.version }}-linux-amd64
-          path: dist/dsutil
-          if-no-files-found: error
-
-  build-windows:
-    name: Build (windows-amd64)
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-20.4, windows-latest]
+        python: ["3.12"]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0   # IMPORTANT: needed for tags
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python }}
 
       - name: Install build dependencies
         run: |
@@ -125,20 +41,32 @@ jobs:
       - name: Build binary with PyInstaller
         shell: bash
         run: |
-          python -m PyInstaller -F -n dsutil --paths src --collect-submodules dsutil entrypoint.py
+          pyinstaller -F -n dsutil --paths src --collect-submodules dsutil entrypoint.py
+
+      - name: Prepare artifact name
+        id: prep
+        shell: bash
+        run: |
+          VERSION="${{ inputs.version }}"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            echo "asset=dsutil-${VERSION}-windows-amd64.exe" >> "$GITHUB_OUTPUT"
+            echo "path=dist/dsutil.exe" >> "$GITHUB_OUTPUT"
+          else
+            echo "asset=dsutil-${VERSION}-linux-amd64" >> "$GITHUB_OUTPUT"
+            echo "path=dist/dsutil" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dsutil-${{ inputs.version }}-windows-amd64.exe
-          path: dist/dsutil.exe
+          name: ${{ steps.prep.outputs.asset }}
+          path: ${{ steps.prep.outputs.path }}
           if-no-files-found: error
 
   release:
     name: Create GitHub Release
-    needs: [build-linux, build-windows]
+    needs: build
     runs-on: ubuntu-latest
-    if: ${{ inputs.publish_release }}
 
     steps:
       - name: Checkout (for tagging)
@@ -146,36 +74,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Create and push git tag (if missing)
-        shell: bash
+      - name: Create and push git tag
         run: |
           VERSION="${{ inputs.version }}"
-          git fetch --tags
-          if git rev-parse -q --verify "refs/tags/${VERSION}" >/dev/null; then
-            echo "Tag ${VERSION} already exists, skipping tag creation."
-          else
-            git tag "${VERSION}"
-            git push origin "${VERSION}"
-          fi
+          git tag "${VERSION}"
+          git push origin "${VERSION}"
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           path: release-assets
 
-      - name: Rename assets nicely
-        shell: bash
-        run: |
-          set -euo pipefail
-          VERSION="${{ inputs.version }}"
-
-          mv "release-assets/dsutil-${VERSION}-linux-amd64/dsutil" \
-             "release-assets/dsutil-${VERSION}-linux-amd64"
-
-          mv "release-assets/dsutil-${VERSION}-windows-amd64.exe/dsutil.exe" \
-             "release-assets/dsutil-${VERSION}-windows-amd64.exe"
-
-          ls -la release-assets
+      - name: List assets
+        run: ls -la release-assets
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -183,6 +94,5 @@ jobs:
           tag_name: ${{ inputs.version }}
           name: ${{ inputs.version }}
           files: |
-            release-assets/dsutil-${{ inputs.version }}-linux-amd64
-            release-assets/dsutil-${{ inputs.version }}-windows-amd64.exe
+            release-assets/**/*
           generate_release_notes: true
