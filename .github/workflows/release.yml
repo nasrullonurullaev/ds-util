@@ -1,4 +1,4 @@
-name: Release (Linux & Windows)
+name: Release (Linux Debian 11 & Windows)
 
 on:
   workflow_dispatch:
@@ -13,35 +13,82 @@ permissions:
 
 jobs:
   build:
-    name: Build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.runs_on }}
 
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-latest]
-        python: ["3.12"]
+        include:
+          - target: linux-debian11
+            runs_on: ubuntu-22.04
+            container: debian:11
+            asset_suffix: linux-amd64
+            exe_name: dsutil
+          - target: windows
+            runs_on: windows-latest
+            container: ""
+            asset_suffix: windows-amd64.exe
+            exe_name: dsutil.exe
+
+    # Для Linux запускаем шаги внутри Debian 11 контейнера
+    container: ${{ matrix.container }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # IMPORTANT: needed for tags
+          fetch-depth: 0
 
-      - name: Setup Python
+      # Windows: оставляем setup-python
+      - name: Setup Python (Windows)
+        if: runner.os == 'Windows'
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python }}
+          python-version: "3.12"
+
+      # Linux (Debian 11): ставим системные зависимости + Python 3.12 через uv
+      - name: Install deps + Python 3.12 (Debian 11)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates curl git build-essential \
+            patchelf \
+            libffi-dev libssl-dev zlib1g-dev
+          rm -rf /var/lib/apt/lists/*
+
+          # uv ставит и управляет Python версиями в user-space
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+          uv python install 3.12
+          uv venv --python 3.12 .venv
+          . .venv/bin/activate
+          python -V
 
       - name: Install build dependencies
+        shell: bash
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install pyinstaller
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            python -m pip install --upgrade pip
+            python -m pip install pyinstaller
+          else
+            . .venv/bin/activate
+            python -m pip install --upgrade pip
+            python -m pip install pyinstaller
+          fi
 
       - name: Build binary with PyInstaller
         shell: bash
         run: |
-          pyinstaller -F -n dsutil --paths src --collect-submodules dsutil entrypoint.py
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            pyinstaller -F -n dsutil --paths src --collect-submodules dsutil entrypoint.py
+          else
+            . .venv/bin/activate
+            pyinstaller -F -n dsutil --paths src --collect-submodules dsutil entrypoint.py
+          fi
 
       - name: Prepare artifact name
         id: prep
@@ -49,11 +96,11 @@ jobs:
         run: |
           VERSION="${{ inputs.version }}"
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            echo "asset=dsutil-${VERSION}-windows-amd64.exe" >> "$GITHUB_OUTPUT"
-            echo "path=dist/dsutil.exe" >> "$GITHUB_OUTPUT"
+            echo "asset=dsutil-${VERSION}-${{ matrix.asset_suffix }}" >> "$GITHUB_OUTPUT"
+            echo "path=dist/${{ matrix.exe_name }}" >> "$GITHUB_OUTPUT"
           else
-            echo "asset=dsutil-${VERSION}-linux-amd64" >> "$GITHUB_OUTPUT"
-            echo "path=dist/dsutil" >> "$GITHUB_OUTPUT"
+            echo "asset=dsutil-${VERSION}-${{ matrix.asset_suffix }}" >> "$GITHUB_OUTPUT"
+            echo "path=dist/${{ matrix.exe_name }}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Upload artifact
