@@ -1,113 +1,98 @@
-name: Build (Linux manylinux_2_28 & Windows)
+name: Release (Linux & Windows)
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Build version label (e.g. v0.1.0)"
+        description: "Release version (e.g. v0.1.0)"
         required: true
         type: string
 
+permissions:
+  contents: write
+
 jobs:
   build:
-    name: Build (${{ matrix.target }})
-    runs-on: ${{ matrix.runner }}
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
 
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: linux-amd64
-            runner: ubuntu-latest
-          - target: windows-amd64
-            runner: windows-latest
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.12"]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0   # IMPORTANT: needed for tags
 
-      # ---------------- LINUX (manylinux_2_28 + shared python) ----------------
-      - name: Build Linux binary in manylinux_2_28 (shared Python)
-        if: matrix.target == 'linux-amd64'
-        shell: bash
-        run: |
-          set -euxo pipefail
-
-          VERSION="${{ inputs.version }}"
-          ASSET="dsutil-${VERSION}-linux-amd64"
-
-          docker run --rm \
-            -v "${PWD}:/io" \
-            -w /io \
-            quay.io/pypa/manylinux_2_28_x86_64 \
-            bash <<'EOF'
-          set -euxo pipefail
-
-          apt-get update
-          apt-get install -y --no-install-recommends \
-            ca-certificates \
-            curl \
-            git \
-            patchelf \
-            python3.12 \
-            python3.12-dev \
-            python3.12-venv
-
-          python3.12 -m venv /tmp/venv
-          /tmp/venv/bin/python -m pip install --upgrade pip
-          /tmp/venv/bin/python -m pip install pyinstaller
-
-          /tmp/venv/bin/pyinstaller -F -n dsutil --paths src --collect-submodules dsutil entrypoint.py
-
-          # sanity-check
-          ldd dist/dsutil || true
-          EOF
-
-          mkdir -p out
-          cp -f dist/dsutil "out/${ASSET}"
-
-      - name: Upload Linux artifact
-        if: matrix.target == 'linux-amd64'
-        uses: actions/upload-artifact@v4
-        with:
-          name: dsutil-${{ inputs.version }}-linux-amd64
-          path: out/dsutil-${{ inputs.version }}-linux-amd64
-          if-no-files-found: error
-
-      # ---------------- WINDOWS ----------------
-      - name: Setup Python (Windows)
-        if: matrix.target == 'windows-amd64'
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python }}
 
-      - name: Install build dependencies (Windows)
-        if: matrix.target == 'windows-amd64'
+      - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install pyinstaller
 
-      - name: Build binary with PyInstaller (Windows)
-        if: matrix.target == 'windows-amd64'
+      - name: Build binary with PyInstaller
         shell: bash
         run: |
           pyinstaller -F -n dsutil --paths src --collect-submodules dsutil entrypoint.py
 
-      - name: Prepare Windows asset
-        if: matrix.target == 'windows-amd64'
+      - name: Prepare artifact name
+        id: prep
         shell: bash
         run: |
-          set -euxo pipefail
           VERSION="${{ inputs.version }}"
-          mkdir -p out
-          cp -f dist/dsutil.exe "out/dsutil-${VERSION}-windows-amd64.exe"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            echo "asset=dsutil-${VERSION}-windows-amd64.exe" >> "$GITHUB_OUTPUT"
+            echo "path=dist/dsutil.exe" >> "$GITHUB_OUTPUT"
+          else
+            echo "asset=dsutil-${VERSION}-linux-amd64" >> "$GITHUB_OUTPUT"
+            echo "path=dist/dsutil" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Upload Windows artifact
-        if: matrix.target == 'windows-amd64'
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dsutil-${{ inputs.version }}-windows-amd64.exe
-          path: out/dsutil-${{ inputs.version }}-windows-amd64.exe
+          name: ${{ steps.prep.outputs.asset }}
+          path: ${{ steps.prep.outputs.path }}
           if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout (for tagging)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create and push git tag
+        run: |
+          VERSION="${{ inputs.version }}"
+          git tag "${VERSION}"
+          git push origin "${VERSION}"
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: List assets
+        run: ls -la release-assets
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          name: ${{ inputs.version }}
+          files: |
+            release-assets/**/*
+          generate_release_notes: true
