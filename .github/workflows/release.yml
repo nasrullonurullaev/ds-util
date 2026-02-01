@@ -5,8 +5,13 @@ on:
     inputs:
       version:
         description: "Release version (e.g. v0.1.0)"
-        required: true
+        required: false
         type: string
+      publish_release:
+        description: "Publish Gihub Release"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -19,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-22.04, windows-latest]
         python: ["3.12"]
 
     steps:
@@ -67,7 +72,8 @@ jobs:
     name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
-
+    if: ${{ inputs.publish_release }}
+    
     steps:
       - name: Checkout (for tagging)
         uses: actions/checkout@v4

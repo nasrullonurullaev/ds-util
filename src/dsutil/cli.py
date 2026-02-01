@@ -5,6 +5,7 @@ import sys
 
 from dsutil.backends.docker import DockerBackend
 from dsutil.collectors.docker_collect import collect_docker_report
+from dsutil.collectors.linux_collect import collect_linux_report
 from dsutil.output.jsonout import to_json
 from dsutil.output.text import print_report
 
@@ -16,14 +17,14 @@ def main() -> None:
     )
     ap.add_argument(
         "--platform",
-        default="docker",
-        choices=["auto", "docker", "linux", "windows"],
+        required=True,
+        choices=["docker", "linux", "windows"],
         help="Execution platform",
     )
     ap.add_argument(
         "--ds",
         default="onlyoffice-documentserver",
-        help="Target container name (docker)",
+        help="Target container name (docker only)",
     )
     ap.add_argument(
         "--json",
@@ -34,7 +35,7 @@ def main() -> None:
         "--docker-tail",
         type=int,
         default=400,
-        help="How many docker log lines to scan",
+        help="How many docker log lines to scan (docker only)",
     )
     ap.add_argument(
         "--file-tail",
@@ -45,22 +46,31 @@ def main() -> None:
 
     args = ap.parse_args()
 
-    # Only docker is implemented for now
-    if args.platform not in ("auto", "docker"):
+    if args.platform == "docker":
+        backend = DockerBackend()
+        report = collect_docker_report(
+            backend=backend,
+            container=args.ds,
+            docker_tail=args.docker_tail,
+            file_tail=args.file_tail,
+        )
+
+    elif args.platform == "linux":
+        # docker-specific args are intentionally ignored
+        report = collect_linux_report(file_tail=args.file_tail)
+
+    elif args.platform == "windows":
         print(
-            f"Platform '{args.platform}' is not implemented yet. "
-            f"Use --platform docker.",
+            "Windows platform is not implemented yet.\n"
+            "Planned support: native DocumentServer for Windows.",
             file=sys.stderr,
         )
         sys.exit(2)
 
-    backend = DockerBackend()
-    report = collect_docker_report(
-        backend=backend,
-        container=args.ds,
-        docker_tail=args.docker_tail,
-        file_tail=args.file_tail,
-    )
+    else:
+        # Should never happen because of argparse choices
+        print(f"Unknown platform: {args.platform}", file=sys.stderr)
+        sys.exit(2)
 
     if args.json:
         print(to_json(report))

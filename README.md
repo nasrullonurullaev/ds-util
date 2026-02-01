@@ -1,16 +1,15 @@
-# dsutil
+## dsutil
 
 `dsutil` is a diagnostic utility for **ONLYOFFICE DocumentServer**.
 
-It analyzes the runtime state of DocumentServer and detects common issues in
-Docker-based installations.
+It analyzes the runtime state of DocumentServer and detects common issues in Docker-based and native Linux installations.
 
 ---
 
 ## Supported platforms
 
 * Docker (Linux) ✅
-* Linux (native) ⏳
+* Linux (native) ✅
 * Windows ⏳
 
 ---
@@ -18,34 +17,89 @@ Docker-based installations.
 ## Installation (Linux)
 
 ```bash
-wget https://github.com/nasrullonurullaev/ds-util/releases/download/v0.3.0/dsutil
+wget https://github.com/nasrullonurullaev/ds-util/releases/download/v0.5.0/dsutil
 chmod +x dsutil
-./dsutil
+```
+
+---
+
+## Usage
+
+⚠️ **Important**
+
+* The utility **must be run with `sudo`**
+* The `--platform` option is **mandatory**
+* Supported values for `--platform`:
+
+  * `docker`
+  * `linux`
+
+### Docker installation
+
+```bash
+sudo ./dsutil --platform docker
+```
+
+By default, `dsutil` uses the DocumentServer container named:
+
+```text
+onlyoffice-documentserver
+```
+
+If your container has a different name, specify it explicitly:
+
+```bash
+sudo ./dsutil --platform docker --ds <container_name>
+```
+
+### Native Linux installation
+
+```bash
+sudo ./dsutil --platform linux
 ```
 
 ---
 
 ## Command-line options
 
-| Option              | Description                      | Default                     |
-| ------------------- | -------------------------------- | --------------------------- |
-| `--ds <name>`       | DocumentServer container name    | `onlyoffice-documentserver` |
-| `--json`            | Output report in JSON format     | disabled                    |
-| `--docker-tail <N>` | Docker log lines to analyze      | `400`                       |
-| `--file-tail <N>`   | Lines read from each DS log file | `800`                       |
-| `--platform`        | Execution platform               | `docker`                    |
+| Option                       | Description                                 | Default                     |
+| ---------------------------- | ------------------------------------------- | --------------------------- |
+| `--platform <docker\|linux>` | Execution platform (**required**)           | —                           |
+| `--ds <name>`                | DocumentServer container name (Docker only) | `onlyoffice-documentserver` |
+| `--json`                     | Output report in JSON format                | disabled                    |
+| `--docker-tail <N>`          | Docker log lines to analyze                 | `400`                       |
+| `--file-tail <N>`            | Lines read from each DS log file            | `800`                       |
 
 ---
 
 ## What is checked
 
-* Container status and healthcheck
-* Supervisor services:
+### Container status and healthcheck
 
-  * Required: `ds:docservice`, `ds:converter`
-  * Optional: `ds:adminpanel`, `ds:example`, `ds:metrics`
-* Nginx configuration
-* PostgreSQL, RabbitMQ, Redis
-* DocumentServer logs (error patterns, timeouts, OOM, etc.)
+### Supervisor services
 
----
+**Required**
+
+* `ds:docservice`
+* `ds:converter`
+
+**Optional**
+
+* `ds:adminpanel`
+* `ds:example`
+* `ds:metrics`
+
+### Nginx configuration
+
+### Services
+
+* PostgreSQL
+* RabbitMQ
+* Redis
+
+### DocumentServer logs
+
+* Error patterns
+* Timeouts
+* OOM events
+* Common runtime issues
