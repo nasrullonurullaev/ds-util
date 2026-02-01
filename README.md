@@ -103,5 +103,3 @@ sudo ./dsutil --platform linux
 * Timeouts
 * OOM events
 * Common runtime issues
-* вынести Docker/Linux в отдельные секции
-* или оформить как README в стиле ONLYOFFICE (бейджи, структура, TOC)
