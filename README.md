@@ -65,18 +65,6 @@ Run from an elevated PowerShell prompt:
 ```powershell
 dsutil.exe --platform windows
 ```
-
-Windows service names checked:
-
-* DsConverterSvc (required)
-* DsDocServiceSvc (required)
-* DsAdminPanelSvc (optional)
-* DsExampleSvc (optional)
-* DsProxySvc (optional, nginx)
-* RabbitMQ
-* postgresql-x64-18
-* Redis
-
 ---
 
 ## Command-line options
