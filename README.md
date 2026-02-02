@@ -17,7 +17,7 @@ It analyzes the runtime state of DocumentServer and detects common issues in Doc
 ## Installation (Linux)
 
 ```bash
-wget https://github.com/nasrullonurullaev/ds-util/releases/download/v0.5.0/dsutil
+wget https://github.com/nasrullonurullaev/ds-util/releases/download/v1.0.0/dsutil
 chmod +x dsutil
 ```
 
