@@ -32,13 +32,18 @@ LOG_TARGETS = [
 def _service_status(backend: Backend, target: str, service_name: str) -> tuple[bool, str]:
     cmd = (
         f"try {{ "
-        f"(Get-Service -Name '{service_name}').Status.ToString() "
+        f"(Get-Service -Name '{service_name}' -ErrorAction Stop).Status.ToString() "
         f"}} catch {{ $_.Exception.Message; exit 1 }}"
     )
     r = backend.exec(target, cmd, timeout_s=10)
     status = (r.out or r.err or "").strip()
     ok = r.rc == 0 and status.lower() == "running"
     return ok, status or f"rc={r.rc}"
+
+
+def _service_missing(status: str) -> bool:
+    lowered = status.lower()
+    return "cannot find any service" in lowered or "service was not found" in lowered
 
 
 def _tail_file(backend: Backend, target: str, path: Path, lines: int) -> tuple[bool, str]:
@@ -100,7 +105,10 @@ def collect_windows_report(file_tail: int = 800) -> Report:
         ok_svc, status = _service_status(backend, TARGET_HOST, svc)
         report.add_check(CheckResult(f"service_{svc}", ok_svc, f"Get-Service {svc}", status))
         if not ok_svc:
-            report.add_issue(Issue("crit", f"Dependency service not running: {svc}", "Ensure the service is installed and running."))
+            if _service_missing(status):
+                report.add_issue(Issue("warn", f"Dependency service missing: {svc}", "Service is not installed; install it if required by your configuration."))
+            else:
+                report.add_issue(Issue("crit", f"Dependency service not running: {svc}", "Ensure the service is installed and running."))
 
     # Logs scan
     rules = default_rules()
