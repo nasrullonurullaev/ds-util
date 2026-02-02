@@ -10,7 +10,7 @@ It analyzes the runtime state of DocumentServer and detects common issues in Doc
 
 * Docker (Linux) ✅
 * Linux (native) ✅
-* Windows ⏳
+* Windows ✅
 
 ---
 
@@ -57,6 +57,25 @@ sudo ./dsutil --platform docker --ds <container_name>
 ```bash
 sudo ./dsutil --platform linux
 ```
+
+### Windows installation
+
+Run from an elevated PowerShell prompt:
+
+```powershell
+dsutil.exe --platform windows
+```
+
+Windows service names checked:
+
+* DsConverterSvc (required)
+* DsDocServiceSvc (required)
+* DsAdminPanelSvc (optional)
+* DsExampleSvc (optional)
+* DsProxySvc (optional, nginx)
+* RabbitMQ
+* postgresql-x64-18
+* Redis
 
 ---
 

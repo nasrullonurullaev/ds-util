@@ -6,6 +6,7 @@ import sys
 from dsutil.backends.docker import DockerBackend
 from dsutil.collectors.docker_collect import collect_docker_report
 from dsutil.collectors.linux_collect import collect_linux_report
+from dsutil.collectors.windows_collect import collect_windows_report
 from dsutil.output.jsonout import to_json
 from dsutil.output.text import print_report
 
@@ -60,12 +61,7 @@ def main() -> None:
         report = collect_linux_report(file_tail=args.file_tail)
 
     elif args.platform == "windows":
-        print(
-            "Windows platform is not implemented yet.\n"
-            "Planned support: native DocumentServer for Windows.",
-            file=sys.stderr,
-        )
-        sys.exit(2)
+        report = collect_windows_report(file_tail=args.file_tail)
 
     else:
         # Should never happen because of argparse choices
